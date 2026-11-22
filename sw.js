@@ -1,5 +1,5 @@
 // Offline cache for the Trip Splitter app. Bump VERSION when files change.
-const VERSION = 'splitter-v1';
+const VERSION = 'splitter-v2';
 const FILES = [
   './', './index.html', './manifest.webmanifest',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png',
