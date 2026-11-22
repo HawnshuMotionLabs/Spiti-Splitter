@@ -161,6 +161,7 @@ main{padding:0 16px calc(120px + var(--safe-b));max-width:680px;margin:0 auto}
 .sheet.open{pointer-events:auto}
 .sheet.open .scrim{opacity:1}
 .sheet.open .panel{transform:none}
+.sheet:not(.open) .panel{visibility:hidden;transition:transform .32s cubic-bezier(.2,.9,.25,1),visibility 0s linear .32s}
 .grab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:8px auto 0;flex:none;background:color-mix(in srgb,var(--sub) 40%,transparent)}
 .sh-top{display:flex;align-items:center;justify-content:space-between;padding:8px 18px 10px;flex:none}
 .sh-top b{font-size:16px;font-weight:700}
@@ -218,6 +219,12 @@ main{padding:0 16px calc(120px + var(--safe-b));max-width:680px;margin:0 auto}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 #toast button{color:var(--a1);font-weight:800}
 @media (prefers-color-scheme:light){#toast button{color:#5eead4}}
+.banner{display:flex;gap:12px;align-items:center;background:var(--card);border:1px solid color-mix(in srgb,var(--warn) 40%,var(--line));border-radius:var(--r);padding:14px;margin-bottom:14px}
+.banner .t{flex:1;font-size:13.5px;line-height:1.4}.banner .t b{display:block;font-size:15px;margin-bottom:2px}
+.steps{counter-reset:st;display:grid;gap:10px;margin:4px 0 16px}
+.steps div{counter-increment:st;display:flex;gap:10px;font-size:14px;line-height:1.45}
+.steps div:before{content:counter(st);flex:none;width:24px;height:24px;border-radius:50%;background:var(--card2);border:1px solid var(--line);display:grid;place-items:center;font-size:12px;font-weight:700}
+.code{font-family:ui-monospace,Menlo,monospace;font-size:12px;word-break:break-all;background:var(--card2);border-radius:10px;padding:10px;user-select:all;-webkit-user-select:all}
 .settingrow{display:flex;align-items:center;gap:12px;padding:12px 0}
 .settingrow+.settingrow{border-top:1px solid var(--line)}
 .settingrow .t{flex:1}
@@ -247,7 +254,10 @@ let D;
 try{D=JSON.parse(localStorage.getItem(KEY))}catch(e){D=null}
 if(!D||!Array.isArray(D.members))D=defaults();
 let storageOK=true;
-function persist(){try{localStorage.setItem(KEY,JSON.stringify(D));storageOK=true}catch(e){storageOK=false;toast('Could not save on this device')}}
+function saveLocal(){try{localStorage.setItem(KEY,JSON.stringify(D));storageOK=true}catch(e){storageOK=false;toast('Could not save on this device')}}
+function persist(){saveLocal();if(window.syncSoon)syncSoon()}
+if(!Array.isArray(D.tomb))D.tomb=[];
+try{const dm=localStorage.getItem(KEY+'-me');if(dm)D.me=dm}catch(e){}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 
 const UI={tab:'home',q:'',fPerson:'all',fCat:'all',mode:'simple'};
@@ -360,6 +370,8 @@ function vHome(L){
   let h=`<div class="hero"><div class="lbl">${n>=1?'You get back':n<=-1?'You still have to pay':'Your balance'}</div><div class="amt num">${Math.abs(n)>=1?money(n):'All settled'}</div>
   <div class="note">${n>=1?'Others owe you this in total':n<=-1?'Across the group, after payments':'Nothing pending for you'}</div>
   <div class="stats"><div><span>Trip total</span><b class="num">${money(sp)}</b></div><div><span>You paid</span><b class="num">${money(L.paid[me]||0)}</b></div><div><span>Your share</span><b class="num">${money(L.share[me]||0)}</b></div></div></div>`;
+  if(!SYNC.tok)h+=`<div class="banner"><div class="t"><b>Not shared yet</b>Entries on this phone aren't visible to the group.</div><button class="btn sm" data-act="syncsheet">Set up</button></div>`;
+  else if(SYNC.err==='auth')h+=`<div class="banner"><div class="t"><b>Sync key not working</b>It may have expired. Ask Sudhanshu for a new invite.</div><button class="btn sm" data-act="syncsheet">Fix</button></div>`;
   h+=`<div class="qa"><button data-act="new-exp">${I.receipt}Add expense</button><button data-act="new-pay">${I.pay}Record payment</button><button data-act="sharesum">${I.share}Share</button></div>`;
   const mine=tx.filter(t=>t.from===me||t.to===me);
   if(mine.length){h+=`<div class="h">Your pending <button data-act="tab" data-v="settle">See all</button></div><div class="card" style="padding:4px 16px">`+mine.map(t=>`<div class="flow">${av(t.from===me?t.to:t.from,30)}<div class="x">${t.from===me?`You pay <b>${esc(nm(t.to))}</b>`:`<b>${esc(nm(t.from))}</b> pays you`}</div><b class="num ${t.from===me?'neg':'pos'}">${money(t.amt)}</b></div>`).join('')+`</div>`}
@@ -419,6 +431,11 @@ function vPeople(L){
   h+=D.members.map(m=>{const v=L.net[m.id]||0,w=Math.abs(v)/max*50;
     return `<button class="pc" data-act="person" data-v="${m.id}">${av(m.id,44)}<div class="mid"><b>${esc(m.name)}${isMe(m.id)?' <span class="tag">You</span>':''}</b><div class="sub num">Paid ${money(L.paid[m.id]||0)} · Share ${money(L.share[m.id]||0)}</div><div class="pbar"><span class="mid0"></span><i style="left:${v>=0?50:50-w}%;width:${w}%;background:${v>=0?'var(--pos)':'var(--neg)'}"></i></div></div>
     <div class="st num ${v>=1?'pos':v<=-1?'neg':'muted'}"><small>${v>=1?'Gets back':v<=-1?'Left to pay':'Settled'}</small>${Math.abs(v)>=1?money(v):'✓'}</div></button>`}).join('');
+  h+=`<div class="h">Sync</div><div class="card" style="padding:4px 16px">`+(SYNC.tok?
+  `<div class="settingrow"><div class="t">Shared with the group<span>${esc(syncLabel())}</span></div><button class="btn sm soft" data-act="syncnow">Sync now</button></div>
+  <div class="settingrow"><div class="t">Invite others<span>Send the join link on WhatsApp</span></div><button class="btn sm" data-act="invite">Invite</button></div>
+  <div class="settingrow"><div class="t">Disconnect<span>Stop syncing on this phone</span></div><button class="btn sm danger" data-act="unsync">Disconnect</button></div>`:
+  `<div class="settingrow"><div class="t">Not syncing<span>Only this phone sees these entries</span></div><button class="btn sm" data-act="syncsheet">Join / set up</button></div>`)+`</div>`;
   h+=`<div class="h">Trip settings</div><div class="card" style="padding:4px 16px">
   <div class="settingrow"><div class="t">Trip name</div><input class="ren" style="text-align:right" id="tripname" value="${esc(D.name)}"></div>
   <div class="settingrow"><div class="t">I am<span>Used for "You" on Home</span></div><select class="ren" style="text-align:right;flex:none" id="meSel">${D.members.map(m=>`<option value="${m.id}" ${isMe(m.id)?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div>
@@ -426,7 +443,7 @@ function vPeople(L){
   <div class="settingrow"><div class="t">Backup<span>Save all data as a file</span></div><button class="btn sm soft" data-act="export">Export</button></div>
   <div class="settingrow"><div class="t">Restore<span>Load a backup file</span></div><button class="btn sm soft" data-act="import">Import</button></div>
   <div class="settingrow"><div class="t">Start over<span>Delete every entry</span></div><button class="btn sm danger" data-act="reset">Reset</button></div>
-  </div><div class="tiny muted" style="text-align:center;margin-top:6px">Works offline · data is stored on this phone only</div>`;
+  </div><div class="tiny muted" style="text-align:center;margin-top:6px">Works offline · ${SYNC.tok?'syncs with the group when online':'saved on this phone only'}</div>`;
   return h;
 }
 
@@ -436,7 +453,7 @@ function openSheet(kind){SH=kind;drawSheet();$('#sheet').classList.add('open');d
 function closeSheet(){$('#sheet').classList.remove('open');document.body.style.overflow='';F=null;SH=null}
 function drawSheet(){
   const inner=$('#sheetInner');const body=inner.querySelector('.sh-body');const st=body?body.scrollTop:0;
-  inner.innerHTML=({exp:sExp,pay:sPay,detail:sDetail,person:sPerson,ppl:sPeople,confirm:sConfirm})[SH]();
+  inner.innerHTML=({exp:sExp,pay:sPay,detail:sDetail,person:sPerson,ppl:sPeople,confirm:sConfirm,sync:sSync,who:sWho})[SH]();
   const nb=inner.querySelector('.sh-body');if(nb&&F&&F._keep)nb.scrollTop=st;
   updStatus();
 }
@@ -563,12 +580,32 @@ function sPeople(){
   <div class="two"><input class="inp" id="newp" placeholder="Add a person"><button class="btn" style="flex:none" data-act="addp">Add</button></div>
   <div class="tiny muted" style="margin:10px 4px">Tap a name to rename. People already in entries can't be removed.</div></div>`;
 }
+function sSync(){
+  return top3('<span style="min-width:60px"></span>','Sync with the group',`<button data-act="close">Close</button>`)+`<div class="sh-body">
+  <div class="field"><label>Got an invite? Paste the trip key</label><input class="inp" id="tokIn" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…"></div>
+  <div class="status bad" id="tokMsg" style="display:none"></div>
+  <button class="btn block" data-act="join">Join trip</button>
+  <div class="h">Setting up for the first time? (Sudhanshu only)</div>
+  <div class="card"><div class="steps">
+   <div><span>Open <a class="link" href="https://github.com/settings/personal-access-tokens/new?name=Spiti%20Splitter%20sync&description=Trip%20expense%20sync&target_name=HawnshuMotionLabs&expires_in=90&contents=write" target="_blank" rel="noopener">this GitHub page</a> (signed in as HawnshuMotionLabs).</span></div>
+   <div><span>Under <b>Repository access</b> pick <b>Only select repositories</b> → <b>Spiti-Splitter</b>.</span></div>
+   <div><span>Under <b>Permissions</b> → <b>Contents</b>, choose <b>Read and write</b>.</span></div>
+   <div><span>Tap <b>Generate token</b>, copy it, paste it above and tap <b>Join trip</b>.</span></div>
+   <div><span>Then People → Sync → <b>Invite</b> to send it to everyone.</span></div>
+  </div><div class="tiny muted">The key can only change this one trip repo. Only share it with the group.</div></div></div>`;
+}
+function sWho(){
+  return top3('<span style="min-width:60px"></span>','Who is using this phone?','<span style="min-width:60px"></span>')+`<div class="sh-body"><div class="small muted" style="margin:0 2px 14px">So the app can show your own balance. You can change it later in People.</div>
+  <div class="ppl">${D.members.map(m=>`<button class="pp" data-act="iam" data-v="${m.id}">${av(m.id,42)}${esc(m.name)}</button>`).join('')}</div></div>`;
+}
 function sConfirm(){
   return top3('<span style="min-width:60px"></span>','Start over?','<span style="min-width:60px"></span>')+`<div class="sh-body"><div class="empty" style="padding:20px"><div class="e">⚠️</div><b>Delete all ${D.items.length} entries?</b>People stay. Export a backup first if you might need it.</div><div class="two"><button class="btn soft" data-act="close">Cancel</button><button class="btn danger" data-act="doreset">Delete all</button></div></div>`;
 }
 
 /* ================= actions ================= */
-function upsert(doc){const i=D.items.findIndex(x=>x.id===doc.id);if(i>=0)D.items[i]=doc;else D.items.push(doc);persist();render()}
+function upsert(doc){doc.updatedAt=Date.now();D.tomb=(D.tomb||[]).filter(t=>t.id!==doc.id);const i=D.items.findIndex(x=>x.id===doc.id);if(i>=0)D.items[i]=doc;else D.items.push(doc);persist();render()}
+function tombstone(id){D.items=D.items.filter(x=>x.id!==id);D.tomb=(D.tomb||[]).filter(t=>t.id!==id);D.tomb.push({id,updatedAt:Date.now()})}
+const cfgTouch=()=>{D.cfgAt=Date.now()};
 function summary(){
   const L=ledger(),tx=transfers(L);
   let t=`*${D.name} — Trip expenses*\nTotal spent: ${money(spend())}\n\n*Balances*\n`;
@@ -587,7 +624,7 @@ async function exportData(){
 }
 $('#importFile').addEventListener('change',async ev=>{
   const f=ev.target.files[0];ev.target.value='';if(!f)return;
-  try{const d=JSON.parse(await f.text());if(!Array.isArray(d.members)||!Array.isArray(d.items))throw 0;D=d;persist();render();toast(`Restored ${d.items.length} entries`)}catch(e){toast('That file is not a valid backup')}
+  try{const d=JSON.parse(await f.text());if(!Array.isArray(d.members)||!Array.isArray(d.items))throw 0;const now=Date.now(),keep=new Set(d.items.map(e=>e.id));D.items.filter(e=>!keep.has(e.id)).forEach(e=>tombstone(e.id));const tb=D.tomb;d.items.forEach(e=>e.updatedAt=now);d.tomb=tb.filter(t=>!keep.has(t.id));d.cfgAt=now;d.me=D.me;D=d;persist();render();toast(`Restored ${d.items.length} entries`)}catch(e){toast('That file is not a valid backup')}
 });
 
 document.addEventListener('click',async ev=>{
@@ -606,7 +643,7 @@ document.addEventListener('click',async ev=>{
     case 'person':F={id:v};openSheet('person');break;
     case 'edit':{const e=D.items.find(x=>x.id===F.id);if(!e)break;e.type==='payment'?startPay(e):startExp(e);break}
     case 'back':F={id:F.id};SH='detail';drawSheet();break;
-    case 'del':{const e=D.items.find(x=>x.id===F.id);if(!e)break;D.items=D.items.filter(x=>x.id!==e.id);persist();closeSheet();render();toast('Deleted',()=>{D.items.push(e);persist();render()});break}
+    case 'del':{const e=D.items.find(x=>x.id===F.id);if(!e)break;tombstone(e.id);persist();closeSheet();render();toast('Deleted',()=>{upsert({...e})});break}
     case 'cat':F.cat=v;F._keep=1;drawSheet();break;
     case 'payer':{if(F.multi){const i=F.payers.indexOf(v);i>=0?F.payers.splice(i,1):F.payers.push(v)}else F.payers=[v];F._keep=1;drawSheet();break}
     case 'multi':F.multi=!F.multi;if(!F.multi)F.payers=F.payers.slice(0,1);F._keep=1;drawSheet();break;
@@ -622,12 +659,20 @@ document.addEventListener('click',async ev=>{
     case 'fp':case 'fc':{const sc=[...document.querySelectorAll('.chips')].map(c=>c.scrollLeft);if(a==='fp')UI.fPerson=v;else UI.fCat=v;render();document.querySelectorAll('.chips').forEach((c,i)=>c.scrollLeft=sc[i]||0);break}
     case 'sharesum':shareText(summary());break;
     case 'editppl':openSheet('ppl');break;
-    case 'addp':{const n=$('#newp').value.trim();if(!n)break;let k=1;while(D.members.some(m=>m.id==='m'+k))k++;D.members.push({id:'m'+k,name:n});persist();drawSheet();render();break}
-    case 'rm':D.members=D.members.filter(m=>m.id!==v);if(!member(D.me))D.me=D.members[0].id;persist();drawSheet();render();break;
+    case 'addp':{const n=$('#newp').value.trim();if(!n)break;D.members.push({id:'m'+uid(),name:n});cfgTouch();persist();drawSheet();render();break}
+    case 'rm':D.members=D.members.filter(m=>m.id!==v);if(!member(D.me))D.me=D.members[0].id;cfgTouch();persist();drawSheet();render();break;
     case 'export':exportData();break;
+    case 'syncsheet':openSheet('sync');break;
+    case 'join':{const tk=($('#tokIn').value||'').trim().replace(/^.*#join=/,'');const msg=$('#tokMsg');if(!tk){msg.style.display='';msg.textContent='Paste the key first.';break}
+      b.disabled=true;b.textContent='Checking…';const ok=await setToken(tk);b.disabled=false;b.textContent='Join trip';
+      if(ok===true){closeSheet();toast('Joined, syncing now');askWho()}else{msg.style.display='';msg.textContent=ok}break}
+    case 'syncnow':if(!SYNC.tok)openSheet('sync');else syncNow(true);break;
+    case 'invite':shareText(inviteText());break;
+    case 'unsync':SYNC.tok='';try{localStorage.removeItem(KEY+'-tok')}catch(e){}render();netState();toast('Sync turned off on this phone');break;
+    case 'iam':D.me=v;try{localStorage.setItem(KEY+'-me',v)}catch(e){}saveLocal();closeSheet();render();break;
     case 'import':$('#importFile').click();break;
     case 'reset':openSheet('confirm');break;
-    case 'doreset':{const old=D.items;D.items=[];persist();closeSheet();render();toast('All entries deleted',()=>{D.items=old;persist();render()});break}
+    case 'doreset':{const old=D.items.slice();old.forEach(e=>tombstone(e.id));persist();closeSheet();render();toast('All entries deleted',()=>{old.forEach(e=>upsert({...e}))});break}
   }
 });
 document.addEventListener('input',ev=>{
@@ -639,9 +684,9 @@ document.addEventListener('input',ev=>{
 });
 document.addEventListener('change',ev=>{
   const t=ev.target;
-  if(t.id==='tripname'){D.name=t.value.trim()||'Trip';persist();render()}
-  else if(t.id==='meSel'){D.me=t.value;persist();render()}
-  else if(t.dataset.ren){const m=member(t.dataset.ren),n=t.value.trim();if(m&&!n){t.value=m.name}if(m&&n&&n!==m.name){m.name=n;persist();render()}}
+  if(t.id==='tripname'){D.name=t.value.trim()||'Trip';cfgTouch();persist();render()}
+  else if(t.id==='meSel'){D.me=t.value;try{localStorage.setItem(KEY+'-me',D.me)}catch(e){}saveLocal();render()}
+  else if(t.dataset.ren){const m=member(t.dataset.ren),n=t.value.trim();if(m&&!n){t.value=m.name}if(m&&n&&n!==m.name){m.name=n;cfgTouch();persist();render()}}
 });
 (()=>{const panel=document.querySelector('.sheet .panel');let y0=null,dy=0,drag=false;
   panel.addEventListener('touchstart',e=>{const body=panel.querySelector('.sh-body');const onHead=!e.target.closest('.sh-body');if(!onHead&&body&&body.scrollTop>0)return;if(e.target.closest('input,select,textarea'))return;y0=e.touches[0].clientY;dy=0;drag=false},{passive:true});
@@ -649,9 +694,93 @@ document.addEventListener('change',ev=>{
   panel.addEventListener('touchend',()=>{if(y0===null)return;panel.style.transition='';panel.style.transform='';if(drag&&dy>110)closeSheet();y0=null});
 })();
 document.addEventListener('keydown',ev=>{if(ev.key==='Enter'&&ev.target.id==='newp')$('[data-act="addp"]').click()});
-function netState(){const p=$('#netpill');const on=navigator.onLine;p.innerHTML=`<i class="dotlive ${on?'':'off'}"></i><span>${on?'Saved on phone':'Offline · saving'}</span>`}
-addEventListener('online',netState);addEventListener('offline',netState);
-render();netState();
+/* ================= group sync (GitHub repo, branch "data") ================= */
+const GH={repo:'HawnshuMotionLabs/Spiti-Splitter',path:'trip.json',branch:'data',site:'https://hawnshumotionlabs.github.io/Spiti-Splitter/'};
+const SYNC={tok:'',busy:false,again:false,etag:null,sha:null,remote:null,last:0,err:'',dirty:false,timer:null};
+try{SYNC.tok=localStorage.getItem(KEY+'-tok')||'';SYNC.last=+localStorage.getItem(KEY+'-last')||0;SYNC.dirty=localStorage.getItem(KEY+'-dirty')==='1'}catch(e){}
+const b64e=s=>btoa(unescape(encodeURIComponent(s)));
+const b64d=s=>decodeURIComponent(escape(atob(s.replace(/\s/g,''))));
+const stamp=r=>r.updatedAt||r.createdAt||0;
+function shared(x){return {v:2,name:x.name||'Trip',members:x.members||[],cfgAt:x.cfgAt||0,items:x.items||[],tomb:x.tomb||[]}}
+function canon(x){const by=(a,b)=>a.id<b.id?-1:a.id>b.id?1:0;return JSON.stringify({name:x.name,members:x.members,cfgAt:x.cfgAt,items:[...x.items].sort(by),tomb:[...x.tomb].sort(by)})}
+function mergeState(a,b){
+  const rec=new Map();
+  const put=r=>{const cur=rec.get(r.id);if(!cur||stamp(r)>stamp(cur)||(stamp(r)===stamp(cur)&&!r.deleted&&cur.deleted))rec.set(r.id,r)};
+  [a,b].forEach(s=>{(s.items||[]).forEach(put);(s.tomb||[]).forEach(t=>put({id:t.id,deleted:true,updatedAt:t.updatedAt}))});
+  const items=[],tomb=[];rec.forEach(r=>r.deleted?tomb.push({id:r.id,updatedAt:r.updatedAt}):items.push(r));
+  const cfg=(b.cfgAt||0)>(a.cfgAt||0)?b:a,other=cfg===a?b:a;
+  const members=(cfg.members||[]).map(m=>({...m}));
+  (other.members||[]).forEach(m=>{if(!members.some(x=>x.id===m.id)&&items.some(e=>involves(e,m.id)))members.push({...m})});
+  return {v:2,name:cfg.name||other.name||'Trip',members:members.length?members:(other.members||[]),cfgAt:Math.max(a.cfgAt||0,b.cfgAt||0),items,tomb};
+}
+async function ghReq(method,body,useEtag){
+  const h={'Authorization':'Bearer '+SYNC.tok,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
+  if(useEtag&&SYNC.etag&&SYNC.remote)h['If-None-Match']=SYNC.etag;
+  if(body)h['Content-Type']='application/json';
+  const url=`https://api.github.com/repos/${GH.repo}/contents/${GH.path}`+(method==='GET'?`?ref=${GH.branch}`:'');
+  return fetch(url,{method,headers:h,body:body?JSON.stringify(body):undefined,cache:'no-store'});
+}
+function setDirty(v){SYNC.dirty=v;try{localStorage.setItem(KEY+'-dirty',v?'1':'0')}catch(e){}}
+window.syncSoon=function(){setDirty(true);netState();clearTimeout(SYNC.timer);SYNC.timer=setTimeout(()=>syncNow(),1200)};
+async function syncNow(loud){
+  if(!SYNC.tok)return;
+  if(SYNC.busy){SYNC.again=true;return}
+  if(!navigator.onLine){netState();if(loud)toast("You're offline, it'll sync when you're back online");return}
+  SYNC.busy=true;netState();
+  try{
+    for(let attempt=0;attempt<4;attempt++){
+      let r=await ghReq('GET',null,true),remote;
+      if(r.status===304){remote=SYNC.remote}
+      else if(r.status===404){remote=shared({name:D.name,members:D.members});SYNC.sha=null;SYNC.etag=null}
+      else if(r.status===401||r.status===403){SYNC.err='auth';throw new Error('auth')}
+      else if(!r.ok)throw new Error('net');
+      else{const j=await r.json();SYNC.sha=j.sha;SYNC.etag=r.headers.get('ETag');try{remote=shared(JSON.parse(b64d(j.content)))}catch(e){remote=shared({})}SYNC.remote=remote}
+      const local=shared(D),merged=mergeState(local,remote);
+      if(canon(merged)!==canon(remote)||!SYNC.sha){
+        const body={message:'Trip update from '+nm(D.me),content:b64e(JSON.stringify(merged)),branch:GH.branch};if(SYNC.sha)body.sha=SYNC.sha;
+        const w=await ghReq('PUT',body);
+        if(w.status===409||w.status===422){SYNC.etag=null;SYNC.remote=null;continue}
+        if(w.status===401||w.status===403){SYNC.err='auth';throw new Error('auth')}
+        if(!w.ok)throw new Error('net');
+        const wj=await w.json();SYNC.sha=wj.content.sha;SYNC.etag=null;SYNC.remote=merged;
+      }
+      const before=canon(local);
+      D={...merged,me:D.me};saveLocal();setDirty(false);SYNC.err='';SYNC.last=Date.now();try{localStorage.setItem(KEY+'-last',SYNC.last)}catch(e){}
+      if(canon(shared(D))!==before){render();if(SH==='detail'||SH==='person')drawSheet()}
+      break;
+    }
+  }catch(e){if(e.message!=='auth')SYNC.err='net';if(loud)toast(SYNC.err==='auth'?'Sync key not accepted':'Could not reach GitHub, will retry')}
+  finally{SYNC.busy=false;netState();if(SYNC.again){SYNC.again=false;setTimeout(()=>syncNow(),300)}}
+}
+async function setToken(tk){
+  if(!navigator.onLine)return "You're offline. Connect to the internet to join.";
+  const old=SYNC.tok;SYNC.tok=tk;SYNC.etag=null;SYNC.remote=null;SYNC.sha=null;
+  try{const r=await ghReq('GET');
+    if(r.status===401)throw 'That key was not accepted. Check you copied all of it.';
+    if(r.status===403||r.status===404&&!(await fetch(`https://api.github.com/repos/${GH.repo}/branches/${GH.branch}`,{headers:{'Authorization':'Bearer '+tk}})).ok)throw 'That key does not have access to the Spiti-Splitter repo.';
+  }catch(e){SYNC.tok=old;return typeof e==='string'?e:'Could not reach GitHub. Try again.'}
+  try{localStorage.setItem(KEY+'-tok',tk)}catch(e){}
+  SYNC.err='';render();setDirty(true);syncNow();return true;
+}
+function askWho(){let has=null;try{has=localStorage.getItem(KEY+'-me')}catch(e){}if(!has)setTimeout(()=>openSheet('who'),400)}
+function syncLabel(){if(SYNC.err==='auth')return 'Key not accepted';if(SYNC.busy)return 'Syncing…';if(!navigator.onLine)return SYNC.dirty?'Offline · changes will sync':'Offline';if(SYNC.dirty)return 'Waiting to sync';if(!SYNC.last)return 'Not synced yet';const m=Math.round((Date.now()-SYNC.last)/60000);return 'Synced '+(m<1?'just now':m<60?m+' min ago':Math.round(m/60)+' h ago')}
+function inviteText(){return `Join our *${D.name}* expense app, so we can all add expenses and see who owes whom 👇\n\n1) Open this link:\n${GH.site}#join=${SYNC.tok}\n\n2) On iPhone, after it opens tap Share → Add to Home Screen. Then open the app → People → Sync → Join, and paste this key:\n${SYNC.tok}\n\nAndroid: just keep using it in your browser (or Add to Home screen).`}
+function netState(){const p=$('#netpill');let ok,t;
+  if(!SYNC.tok){ok=false;t='This phone only'}
+  else if(SYNC.err==='auth'){ok=false;t='Sync key issue'}
+  else if(SYNC.busy){ok=true;t='Syncing…'}
+  else if(!navigator.onLine){ok=false;t=SYNC.dirty?'Offline · will sync':'Offline'}
+  else if(SYNC.dirty){ok=false;t='Waiting to sync'}
+  else{ok=true;t='Synced'}
+  p.innerHTML=`<i class="dotlive ${ok?'':'off'}"></i><span>${t}</span>`;p.dataset.act='syncnow';p.style.cursor='pointer'}
+addEventListener('online',()=>{netState();syncNow()});addEventListener('offline',netState);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')syncNow()});
+setInterval(()=>{if(document.visibilityState==='visible')syncNow()},30000);
+function joinFromHash(){const m=location.hash.match(/#join=([^&]+)/);if(m){const tk=decodeURIComponent(m[1]).trim();try{history.replaceState(null,'',location.pathname)}catch(e){}
+  if(tk===SYNC.tok){syncNow();return}
+  setToken(tk).then(ok=>{if(ok===true){toast('Joined the trip, syncing now');askWho()}else toast(ok)})}}
+joinFromHash();addEventListener('hashchange',joinFromHash);
+render();netState();syncNow();
 if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>

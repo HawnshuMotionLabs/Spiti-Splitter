@@ -1,5 +1,5 @@
 // Offline cache for the Trip Splitter app. Bump VERSION when files change.
-const VERSION = 'splitter-v2';
+const VERSION = 'splitter-v3';
 const FILES = [
   './', './index.html', './manifest.webmanifest',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png',
@@ -17,6 +17,7 @@ self.addEventListener('activate', e => {
 });
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  if (new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
     caches.match(e.request, { ignoreSearch: true }).then(hit => {
       const net = fetch(e.request).then(res => {
