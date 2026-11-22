@@ -157,7 +157,7 @@ main{padding:0 16px calc(120px + var(--safe-b));max-width:680px;margin:0 auto}
 /* sheet */
 .sheet{position:fixed;inset:0;z-index:50;pointer-events:none}
 .sheet .scrim{position:absolute;inset:0;background:rgba(0,0,0,.5);opacity:0;transition:opacity .25s}
-.sheet .panel{will-change:transform;position:absolute;left:0;right:0;bottom:0;max-width:680px;margin:0 auto;max-height:93vh;background:var(--bg);border-radius:26px 26px 0 0;transform:translateY(102%);transition:transform .32s cubic-bezier(.2,.9,.25,1);display:flex;flex-direction:column;box-shadow:0 -10px 40px rgba(0,0,0,.4)}
+.sheet .panel{will-change:transform;position:absolute;left:0;right:0;bottom:0;max-width:680px;margin:0 auto;max-height:93vh;max-height:calc(100dvh - max(env(safe-area-inset-top),14px) - 10px);background:var(--bg);border-radius:26px 26px 0 0;transform:translateY(102%);transition:transform .32s cubic-bezier(.2,.9,.25,1);display:flex;flex-direction:column;box-shadow:0 -10px 40px rgba(0,0,0,.4)}
 .sheet.open{pointer-events:auto}
 .sheet.open .scrim{opacity:1}
 .sheet.open .panel{transform:none}
@@ -225,6 +225,7 @@ main{padding:0 16px calc(120px + var(--safe-b));max-width:680px;margin:0 auto}
 .steps div{counter-increment:st;display:flex;gap:10px;font-size:14px;line-height:1.45}
 .steps div:before{content:counter(st);flex:none;width:24px;height:24px;border-radius:50%;background:var(--card2);border:1px solid var(--line);display:grid;place-items:center;font-size:12px;font-weight:700}
 .code{font-family:ui-monospace,Menlo,monospace;font-size:12px;word-break:break-all;background:var(--card2);border-radius:10px;padding:10px;user-select:all;-webkit-user-select:all}
+.whoami{position:relative;z-index:1;display:inline-block;margin-bottom:8px;font-size:12px;font-weight:700;color:#fff;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.28);padding:5px 10px;border-radius:999px}
 .settingrow{display:flex;align-items:center;gap:12px;padding:12px 0}
 .settingrow+.settingrow{border-top:1px solid var(--line)}
 .settingrow .t{flex:1}
@@ -233,7 +234,7 @@ main{padding:0 16px calc(120px + var(--safe-b));max-width:680px;margin:0 auto}
 </style>
 </head>
 <body>
-<div class="top"><h1 id="title">Spiti 2026</h1><div class="pill" id="netpill"><i class="dotlive"></i><span>Offline ready</span></div></div>
+<div class="top"><h1 id="title" data-act="tab" data-v="home" style="cursor:pointer">Spiti 2026</h1><div class="pill" id="netpill"><i class="dotlive"></i><span>Offline ready</span></div></div>
 <main id="main"></main>
 <nav class="tabbar" id="tabbar"></nav>
 <div class="sheet" id="sheet"><div class="scrim" data-act="close"></div><div class="panel"><div class="grab"></div><div id="sheetInner" style="display:flex;flex-direction:column;min-height:0"></div></div></div>
@@ -248,7 +249,7 @@ const CATS=[
  ['permits','Permits','🎟️','#84cc16'],['activities','Fun','🏔️','#ec4899'],['shopping','Shopping','🛍️','#eab308'],['drinks','Drinks','🍻','#f59e0b'],
  ['games','Games','🃏','#64748b'],['other','Other','📦','#94a3b8']];
 const AVC=[['#14b8a6','#0ea5e9'],['#8b5cf6','#6366f1'],['#ec4899','#f43f5e'],['#f97316','#eab308'],['#22c55e','#14b8a6'],['#3b82f6','#8b5cf6'],['#f43f5e','#f97316'],['#06b6d4','#22c55e']];
-function defaults(){return {v:1,name:'Spiti 2026',me:'m1',members:[
+function defaults(){return {v:1,name:'Spiti 2026',me:null,members:[
  {id:'m1',name:'Sudhanshu'},{id:'m2',name:'Kaustubh'},{id:'m3',name:'Shruti Punjani'},{id:'m4',name:'Shruti Shah'},{id:'m5',name:'Sumit'},{id:'m6',name:'Bhavesh'}],items:[]}}
 let D;
 try{D=JSON.parse(localStorage.getItem(KEY))}catch(e){D=null}
@@ -257,10 +258,10 @@ let storageOK=true;
 function saveLocal(){try{localStorage.setItem(KEY,JSON.stringify(D));storageOK=true}catch(e){storageOK=false;toast('Could not save on this device')}}
 function persist(){saveLocal();if(window.syncSoon)syncSoon()}
 if(!Array.isArray(D.tomb))D.tomb=[];
-try{const dm=localStorage.getItem(KEY+'-me');if(dm)D.me=dm}catch(e){}
+D.me=null;try{const dm=localStorage.getItem(KEY+'-me');if(dm)D.me=dm}catch(e){}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 
-const UI={tab:'home',q:'',fPerson:'all',fCat:'all',mode:'simple'};
+const UI={tab:'home',q:'',fPerson:'all',fCat:'all',mode:'direct'};
 
 /* ================= helpers ================= */
 const $=s=>document.querySelector(s);
@@ -367,13 +368,18 @@ function itemRow(e,p){
 }
 function vHome(L){
   const me=D.me,n=L.net[me]||0,sp=spend(),tx=transfers(L);
-  let h=`<div class="hero"><div class="lbl">${n>=1?'You get back':n<=-1?'You still have to pay':'Your balance'}</div><div class="amt num">${Math.abs(n)>=1?money(n):'All settled'}</div>
+  if(!member(me))return `<div class="banner"><div class="t"><b>Who is using this phone?</b>Pick your name to see your own balance.</div><button class="btn sm" data-act="who">Choose</button></div>`+vHomeRest(L,null,sp,tx);
+  let h=`<div class="hero"><button class="whoami" data-act="who">${esc(nm(me))} · change</button><div class="lbl">${n>=1?'You get back':n<=-1?'You still have to pay':'Your balance'}</div><div class="amt num">${Math.abs(n)>=1?money(n):'All settled'}</div>
   <div class="note">${n>=1?'Others owe you this in total':n<=-1?'Across the group, after payments':'Nothing pending for you'}</div>
   <div class="stats"><div><span>Trip total</span><b class="num">${money(sp)}</b></div><div><span>You paid</span><b class="num">${money(L.paid[me]||0)}</b></div><div><span>Your share</span><b class="num">${money(L.share[me]||0)}</b></div></div></div>`;
   if(!SYNC.tok)h+=`<div class="banner"><div class="t"><b>Not shared yet</b>Entries on this phone aren't visible to the group.</div><button class="btn sm" data-act="syncsheet">Set up</button></div>`;
   else if(SYNC.err==='auth')h+=`<div class="banner"><div class="t"><b>Sync key not working</b>It may have expired. Ask Sudhanshu for a new invite.</div><button class="btn sm" data-act="syncsheet">Fix</button></div>`;
+  return h+vHomeRest(L,me,sp,tx);
+}
+function vHomeRest(L,me,sp,tx){
+  let h='';
   h+=`<div class="qa"><button data-act="new-exp">${I.receipt}Add expense</button><button data-act="new-pay">${I.pay}Record payment</button><button data-act="sharesum">${I.share}Share</button></div>`;
-  const mine=tx.filter(t=>t.from===me||t.to===me);
+  const mine=me?tx.filter(t=>t.from===me||t.to===me):[];
   if(mine.length){h+=`<div class="h">Your pending <button data-act="tab" data-v="settle">See all</button></div><div class="card" style="padding:4px 16px">`+mine.map(t=>`<div class="flow">${av(t.from===me?t.to:t.from,30)}<div class="x">${t.from===me?`You pay <b>${esc(nm(t.to))}</b>`:`<b>${esc(nm(t.from))}</b> pays you`}</div><b class="num ${t.from===me?'neg':'pos'}">${money(t.amt)}</b></div>`).join('')+`</div>`}
   const rec=sorted().slice(0,5);
   h+=`<div class="h">Recent <button data-act="tab" data-v="activity">All activity</button></div>`;
@@ -438,7 +444,7 @@ function vPeople(L){
   `<div class="settingrow"><div class="t">Not syncing<span>Only this phone sees these entries</span></div><button class="btn sm" data-act="syncsheet">Join / set up</button></div>`)+`</div>`;
   h+=`<div class="h">Trip settings</div><div class="card" style="padding:4px 16px">
   <div class="settingrow"><div class="t">Trip name</div><input class="ren" style="text-align:right" id="tripname" value="${esc(D.name)}"></div>
-  <div class="settingrow"><div class="t">I am<span>Used for "You" on Home</span></div><select class="ren" style="text-align:right;flex:none" id="meSel">${D.members.map(m=>`<option value="${m.id}" ${isMe(m.id)?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div>
+  <div class="settingrow"><div class="t">I am<span>Used for "You" on Home</span></div><select class="ren" style="text-align:right;flex:none" id="meSel">${member(D.me)?'':'<option value="" selected>Choose…</option>'}${D.members.map(m=>`<option value="${m.id}" ${isMe(m.id)?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div>
   <div class="settingrow"><div class="t">Edit people<span>Rename, add or remove</span></div><button class="btn sm soft" data-act="editppl">Edit</button></div>
   <div class="settingrow"><div class="t">Backup<span>Save all data as a file</span></div><button class="btn sm soft" data-act="export">Export</button></div>
   <div class="settingrow"><div class="t">Restore<span>Load a backup file</span></div><button class="btn sm soft" data-act="import">Import</button></div>
@@ -449,8 +455,22 @@ function vPeople(L){
 
 /* ================= sheets ================= */
 let F=null,SH=null;
-function openSheet(kind){SH=kind;drawSheet();$('#sheet').classList.add('open');document.body.style.overflow='hidden'}
-function closeSheet(){$('#sheet').classList.remove('open');document.body.style.overflow='';F=null;SH=null}
+let NAV={sheet:false,tab:false,skip:0};
+function openSheet(kind){const was=!!SH;SH=kind;drawSheet();$('#sheet').classList.add('open');document.body.style.overflow='hidden';
+  if(!was&&!NAV.sheet){NAV.sheet=true;try{history.pushState({s:1},'')}catch(e){}}}
+function hideSheet(){const p=document.querySelector('.sheet .panel');p.style.transform='';p.style.transition='';$('#sheet').classList.remove('open');document.body.style.overflow='';F=null;SH=null}
+function closeSheet(){hideSheet();if(NAV.sheet){NAV.sheet=false;NAV.skip++;try{history.back()}catch(e){NAV.skip--}}}
+function goTab(v){
+  if(v===UI.tab){window.scrollTo({top:0,behavior:'smooth'});return}
+  if(v!=='home'&&!NAV.tab){NAV.tab=true;try{history.pushState({t:1},'')}catch(e){}}
+  if(v==='home'&&NAV.tab){NAV.tab=false;NAV.skip++;try{history.back()}catch(e){NAV.skip--}}
+  UI.tab=v;render();window.scrollTo({top:0});
+}
+addEventListener('popstate',()=>{
+  if(NAV.skip>0){NAV.skip--;return}
+  if(SH){NAV.sheet=false;hideSheet();return}
+  if(UI.tab!=='home'){NAV.tab=false;UI.tab='home';render();window.scrollTo({top:0})}
+});
 function drawSheet(){
   const inner=$('#sheetInner');const body=inner.querySelector('.sh-body');const st=body?body.scrollTop:0;
   inner.innerHTML=({exp:sExp,pay:sPay,detail:sDetail,person:sPerson,ppl:sPeople,confirm:sConfirm,sync:sSync,who:sWho})[SH]();
@@ -463,7 +483,7 @@ const top3=(l,t,r)=>`<div class="sh-top">${l}<b>${t}</b>${r}</div>`;
 function startExp(e){
   const all=D.members.map(m=>m.id);
   if(e){const pd=e.paid||{};F={k:'exp',id:e.id,title:e.title||'',amount:String(r2(total(e))),date:e.date||today(),cat:e.cat||'other',note:e.note||'',payers:Object.keys(pd),multi:Object.keys(pd).length>1,pv:Object.fromEntries(Object.entries(pd).map(([a,b])=>[a,String(b)])),mode:e.split?.mode||'equal',among:new Set(e.split?.among||[]),vals:Object.fromEntries(Object.entries(e.split?.values||{}).map(([a,b])=>[a,String(b)])),createdAt:e.createdAt}}
-  else F={k:'exp',title:'',amount:'',date:today(),cat:'food',note:'',payers:[D.me],multi:false,pv:{},mode:'equal',among:new Set(all),vals:{}};
+  else F={k:'exp',title:'',amount:'',date:today(),cat:'food',note:'',payers:member(D.me)?[D.me]:[],multi:false,pv:{},mode:'equal',among:new Set(all),vals:{}};
   openSheet('exp');
 }
 function sExp(){
@@ -595,8 +615,8 @@ function sSync(){
   </div><div class="tiny muted">The key can only change this one trip repo. Only share it with the group.</div></div></div>`;
 }
 function sWho(){
-  return top3('<span style="min-width:60px"></span>','Who is using this phone?','<span style="min-width:60px"></span>')+`<div class="sh-body"><div class="small muted" style="margin:0 2px 14px">So the app can show your own balance. You can change it later in People.</div>
-  <div class="ppl">${D.members.map(m=>`<button class="pp" data-act="iam" data-v="${m.id}">${av(m.id,42)}${esc(m.name)}</button>`).join('')}</div></div>`;
+  return top3(`<button data-act="close">Later</button>`,'Who is using this phone?','<span style="min-width:60px"></span>')+`<div class="sh-body"><div class="small muted" style="margin:0 2px 14px">So the app can show your own balance. Tap your own name. You can change it anytime from Home.</div>
+  <div class="ppl">${D.members.map(m=>`<button class="pp ${isMe(m.id)?'on':''}" data-act="iam" data-v="${m.id}"><span class="ck">✓</span>${av(m.id,42)}${esc(m.name)}</button>`).join('')}</div></div>`;
 }
 function sConfirm(){
   return top3('<span style="min-width:60px"></span>','Start over?','<span style="min-width:60px"></span>')+`<div class="sh-body"><div class="empty" style="padding:20px"><div class="e">⚠️</div><b>Delete all ${D.items.length} entries?</b>People stay. Export a backup first if you might need it.</div><div class="two"><button class="btn soft" data-act="close">Cancel</button><button class="btn danger" data-act="doreset">Delete all</button></div></div>`;
@@ -633,7 +653,7 @@ document.addEventListener('click',async ev=>{
   if(!F&&['cat','payer','multi','mode-s','tog','all','none','pfrom','pto','save-exp','save-pay','del','edit','back'].includes(a))return;
   if(F&&!F.k&&['cat','payer','multi','mode-s','tog','all','none','pfrom','pto','save-exp','save-pay'].includes(a))return;
   switch(a){
-    case 'tab':UI.tab=v;render();window.scrollTo({top:0});break;
+    case 'tab':goTab(v);break;
     case 'add':case 'new-exp':startExp();break;
     case 'new-pay':startPay();break;
     case 'switch-pay':startPay();break;
@@ -669,7 +689,8 @@ document.addEventListener('click',async ev=>{
     case 'syncnow':if(!SYNC.tok)openSheet('sync');else syncNow(true);break;
     case 'invite':shareText(inviteText());break;
     case 'unsync':SYNC.tok='';try{localStorage.removeItem(KEY+'-tok')}catch(e){}render();netState();toast('Sync turned off on this phone');break;
-    case 'iam':D.me=v;try{localStorage.setItem(KEY+'-me',v)}catch(e){}saveLocal();closeSheet();render();break;
+    case 'iam':D.me=v;try{localStorage.setItem(KEY+'-me',v);localStorage.setItem(KEY+'-meok','1')}catch(e){}saveLocal();closeSheet();render();toast('This phone is now '+nm(v));break;
+    case 'who':openSheet('who');break;
     case 'import':$('#importFile').click();break;
     case 'reset':openSheet('confirm');break;
     case 'doreset':{const old=D.items.slice();old.forEach(e=>tombstone(e.id));persist();closeSheet();render();toast('All entries deleted',()=>{old.forEach(e=>upsert({...e}))});break}
@@ -685,7 +706,7 @@ document.addEventListener('input',ev=>{
 document.addEventListener('change',ev=>{
   const t=ev.target;
   if(t.id==='tripname'){D.name=t.value.trim()||'Trip';cfgTouch();persist();render()}
-  else if(t.id==='meSel'){D.me=t.value;try{localStorage.setItem(KEY+'-me',D.me)}catch(e){}saveLocal();render()}
+  else if(t.id==='meSel'){if(!t.value)return;D.me=t.value;try{localStorage.setItem(KEY+'-meok','1')}catch(e){}try{localStorage.setItem(KEY+'-me',D.me)}catch(e){}saveLocal();render()}
   else if(t.dataset.ren){const m=member(t.dataset.ren),n=t.value.trim();if(m&&!n){t.value=m.name}if(m&&n&&n!==m.name){m.name=n;cfgTouch();persist();render()}}
 });
 (()=>{const panel=document.querySelector('.sheet .panel');let y0=null,dy=0,drag=false;
@@ -737,7 +758,7 @@ async function syncNow(loud){
       else{const j=await r.json();SYNC.sha=j.sha;SYNC.etag=r.headers.get('ETag');try{remote=shared(JSON.parse(b64d(j.content)))}catch(e){remote=shared({})}SYNC.remote=remote}
       const local=shared(D),merged=mergeState(local,remote);
       if(canon(merged)!==canon(remote)||!SYNC.sha){
-        const body={message:'Trip update from '+nm(D.me),content:b64e(JSON.stringify(merged)),branch:GH.branch};if(SYNC.sha)body.sha=SYNC.sha;
+        const body={message:'Trip update from '+(member(D.me)?nm(D.me):'a phone'),content:b64e(JSON.stringify(merged)),branch:GH.branch};if(SYNC.sha)body.sha=SYNC.sha;
         const w=await ghReq('PUT',body);
         if(w.status===409||w.status===422){SYNC.etag=null;SYNC.remote=null;continue}
         if(w.status===401||w.status===403){SYNC.err='auth';throw new Error('auth')}
@@ -762,7 +783,7 @@ async function setToken(tk){
   try{localStorage.setItem(KEY+'-tok',tk)}catch(e){}
   SYNC.err='';render();setDirty(true);syncNow();return true;
 }
-function askWho(){let has=null;try{has=localStorage.getItem(KEY+'-me')}catch(e){}if(!has)setTimeout(()=>openSheet('who'),400)}
+function askWho(force){let ok=null;try{ok=localStorage.getItem(KEY+'-meok')}catch(e){}if(force||!ok||!member(D.me))setTimeout(()=>{if(!SH)openSheet('who')},500)}
 function syncLabel(){if(SYNC.err==='auth')return 'Key not accepted';if(SYNC.busy)return 'Syncing…';if(!navigator.onLine)return SYNC.dirty?'Offline · changes will sync':'Offline';if(SYNC.dirty)return 'Waiting to sync';if(!SYNC.last)return 'Not synced yet';const m=Math.round((Date.now()-SYNC.last)/60000);return 'Synced '+(m<1?'just now':m<60?m+' min ago':Math.round(m/60)+' h ago')}
 function inviteText(){return `Join our *${D.name}* expense app, so we can all add expenses and see who owes whom 👇\n\n1) Open this link:\n${GH.site}#join=${SYNC.tok}\n\n2) On iPhone, after it opens tap Share → Add to Home Screen. Then open the app → People → Sync → Join, and paste this key:\n${SYNC.tok}\n\nAndroid: just keep using it in your browser (or Add to Home screen).`}
 function netState(){const p=$('#netpill');let ok,t;
@@ -781,7 +802,14 @@ function joinFromHash(){const m=location.hash.match(/#join=([^&]+)/);if(m){const
   setToken(tk).then(ok=>{if(ok===true){toast('Joined the trip, syncing now');askWho()}else toast(ok)})}}
 joinFromHash();addEventListener('hashchange',joinFromHash);
 render();netState();syncNow();
-if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
+if('serviceWorker' in navigator&&location.protocol.startsWith('http')){
+  navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>{
+    const chk=()=>reg.update().catch(()=>{});chk();
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')chk()});
+  }).catch(()=>{});
+  const hadCtl=!!navigator.serviceWorker.controller;let reloaded=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!hadCtl||reloaded||F)return;reloaded=true;location.reload()});
+}
+askWho();
 </script>
 </body>
 </html>
